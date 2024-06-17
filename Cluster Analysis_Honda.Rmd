@@ -1,0 +1,199 @@
+---
+title: "Honda Clustering"
+author: "Raymond David, Hyoju Kang, Angel Hsu"
+date: "2023-11-21"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r include=FALSE}
+# Load Libraries
+library(tidyverse)
+```
+
+
+# Clustering
+```{r}
+features <- read_csv("/Users/hyoju/Desktop/Honda Competition/Datasets/feature.csv")
+merged <- read_csv("/Users/hyoju/Desktop/Honda Competition/Datasets/merged.csv")
+```
+```{r}
+library(stats)
+
+# Function to extract numeric values
+extract_numeric <- function(x) {
+  as.numeric(gsub("[^0-9.]", "", x))
+}
+
+# Select columns for clustering
+selected_columns <- data.frame(
+  Acceleration = extract_numeric(features$Acceleration),
+  TopSpeed = extract_numeric(features$TopSpeed),
+  Range = extract_numeric(features$Range),
+  Efficiency = extract_numeric(gsub("[^0-9.]", "", features$Efficiency)),
+  FastChargeSpeed = extract_numeric(features$FastChargeSpeed)
+)
+
+# Normalize the data
+normalized_data <- scale(selected_columns)
+
+# Determine the number of clusters (k value)
+# For demonstration purposes, let's assume k = 3
+k <- 3
+
+# Perform k-means clustering
+kmeans_result <- kmeans(normalized_data, centers = k)
+
+# View the cluster assignments
+cluster_assignments <- kmeans_result$cluster
+#print(cluster_assignments)
+
+# View the centroids of each cluster
+centroids <- kmeans_result$centers
+print(centroids)
+```
+
+```{r}
+# Assuming kmeans_result is your kmeans clustering result
+plot(normalized_data, col = kmeans_result$cluster, pch = 19)
+points(kmeans_result$centers, col = 1:k, pch = 8, cex = 2)
+
+```
+```{r}
+# K-means + One Hot Encoding
+# Extract numerical values from columns
+extract_numeric <- function(x) {
+  as.numeric(gsub("[^0-9.]", "", x))
+}
+
+# Select numerical columns for clustering
+selected_columns <- data.frame(
+  Acceleration = extract_numeric(features$Acceleration),
+  TopSpeed = extract_numeric(features$TopSpeed),
+  Range = extract_numeric(features$Range),
+  Efficiency = extract_numeric(gsub("[^0-9.]", "", features$Efficiency)),
+  FastChargeSpeed = extract_numeric(features$FastChargeSpeed)
+)
+
+# One-hot encode categorical column 'Drive'
+drive_column <- model.matrix(~ Drive - 1, data = features)
+selected_columns <- cbind(selected_columns, drive_column)
+
+# Normalize the data
+normalized_data <- scale(selected_columns)
+
+# Determine the number of clusters (k value)
+# For demonstration purposes, let's assume k = 3
+k <- 3
+
+# Perform k-means clustering
+kmeans_result <- kmeans(normalized_data, centers = k)
+
+# View the cluster assignments
+cluster_assignments <- kmeans_result$cluster
+#print(cluster_assignments)
+
+# View the centroids of each cluster
+centroids <- kmeans_result$centers
+print(centroids)
+
+```
+
+# Cluster using Merged Dataset
+
+```{r}
+# Extract numerical values from columns
+extract_numeric <- function(x) {
+  as.numeric(gsub("[^0-9.]", "", x))
+}
+
+# Select columns for clustering
+selected_columns <- data.frame(
+  SalesCount = merged$`Sales Count`,
+  Acceleration = extract_numeric(merged$`Acceleration (sec)`),
+  TopSpeed = extract_numeric(merged$`TopSpeed (km/h)`),
+  Range = extract_numeric(merged$`Range (km)`)
+)
+
+# Normalize the data
+normalized_data <- scale(selected_columns)
+
+# Determine the number of clusters (k value)
+# For demonstration purposes, let's assume k = 3
+k <- 3
+
+# Perform k-means clustering
+# Convert data.frame to matrix as kmeans() requires a matrix input
+kmeans_result <- kmeans(as.matrix(normalized_data), centers = k)
+
+# View the cluster assignments
+cluster_assignments <- kmeans_result$cluster
+print(cluster_assignments)
+
+# View the centroids of each cluster
+centroids <- kmeans_result$centers
+print(centroids)
+```
+
+```{r}
+# K-means + One-hot Encoding
+# Extract numerical values from columns
+extract_numeric <- function(x) {
+  as.numeric(gsub("[^0-9.]", "", x))
+}
+
+# Manually encode 'BodyStyle' column
+encoded_body_style <- model.matrix(~ `Body Style` - 1, data = merged)
+
+# Select numerical columns for clustering
+selected_columns <- cbind(
+  encoded_body_style,
+  Acceleration = extract_numeric(merged$`Acceleration (sec)`),
+  TopSpeed = extract_numeric(merged$`TopSpeed (km/h)`)
+)
+
+# Normalize the data
+normalized_data <- scale(selected_columns)
+
+# Determine the number of clusters (k value)
+# For demonstration purposes, let's assume k = 3
+k <- 3
+
+# Perform k-means clustering
+kmeans_result <- kmeans(normalized_data, centers = k)
+
+# View the cluster assignments
+cluster_assignments <- kmeans_result$cluster
+# print(cluster_assignments)
+
+# View the centroids of each cluster
+centroids <- kmeans_result$centers
+print(centroids)
+```
+
+<Overall Interpretation>
+
+# US Vehicle Feature Dataset 
+
+### Cluster1:
+Vehicles exhibit well-balanced performance attributes, slightly leaning towards enhanced efficiency and fast charging capabilities. Although All-Wheel Drive stands prevalent, it does not assert exclusive dominance within this cluster.
+
+### Cluster2:
+In contrast, the second cluster encompasses vehicles with diverse performance traits, markedly emphasizing speed and range. The presence of various drive types underscores a broad spectrum of vehicles, each possessing distinct performance features
+
+### Cluster3:
+Lastly, the third cluster suggests vehicles with more modest performance attributes, demonstrating a slight inclination towards acceleration while exhibiting lower efficiency, moderately reduced top speed, and range. The cluster portrays a mixed representation of vehicles, with a notable focus on front and rear-wheel drives 
+
+
+# Washington EV Population Dataset
+
+### Cluster1:
+The initial group predominantly comprises hatchback cars with sales figures that align with the average. These vehicles notably exhibit higher acceleration but relatively lower top speeds, highlighting a trade-off between these performance metrics
+
+### Cluster2:
+The second cluster presents a blend of SUVs, fewer hatchbacks, and sedans. Vehicles in this cluster generally showcase higher acceleration but demonstrate lower top speeds, indicating a distinctive category of cars encompassing diverse body styles yet sharing analogous performance attributes
+
+### Cluster3:
+The third cluster primarily consists of sedans boasting sales counts higher than the average. These vehicles display lower acceleration but boast higher top speeds, possibly targeting a market segment prioritizing velocity over rapid acceleration

@@ -1,0 +1,326 @@
+---
+title: "Honda Analysis"
+author: "Raymond David"
+date: "2023-11-12"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Finding Correlation between Vehicle Ownership In Washington Vs The Overall US Market.
+### Data Pre-processing
+```{r message=FALSE}
+# Loading necessary libraries
+library(tidyverse)
+# Importing Datasets
+
+# Electric Vehicle Population Dataset
+electric_pop <- read_csv("Electric_Vehicle_Population_Data.csv")
+# Alternative Fuel Vehicles
+alt_fuel <-read_csv("Alternative Fuel Vehicles US.csv")
+# Public Charging Stations
+public_charging <- read_csv("alt_fuel_stations (Nov 10 2023) Public.csv")
+# Private Charging Stations
+private_charging <- read_csv("alt_fuel_stations (Nov 10 2023) Private.csv")
+```
+
+
+```{r}
+head(electric_pop)
+```
+```{r}
+(electric_pop_grouped <-electric_pop %>% group_by(County)%>%
+  summarize(count = n()))
+```
+```{r}
+# Select Relevant Columns From Public Charging Dataset
+(public_charging_subset <- select(public_charging,'Station Name','Street Address','City','State','ZIP','EV Level1 EVSE Num','EV Level2 EVSE Num',
+       'EV DC Fast Count','Latitude','Longitude','EV Connector Types','Facility Type','EV Workplace Charging'))
+```
+
+```{r}
+# Select Relevant Columns From Private Charging Dataset
+(private_charging_subset <- select(private_charging,'Station Name','Street Address','City','State','ZIP','EV Level1 EVSE Num','EV Level2 EVSE Num',
+       'EV DC Fast Count','Latitude','Longitude','EV Connector Types','Facility Type','EV Workplace Charging'))
+```
+```{r}
+# Inner Join Public Charging and Electric Vehicle Population Dataset 
+public_charging_subset$ZIP <- as.integer(public_charging_subset$ZIP)
+
+(combined_public_EVpop <- inner_join(public_charging_subset, electric_pop, by = c("ZIP" = "Postal Code")))
+
+```
+### Regression Based on ZIP
+```{r}
+# Group electric pop by zip, showing counts
+(counts_per_postal <- electric_pop %>%
+  group_by(`Postal Code`) %>%
+  summarize(count = n()) %>% 
+  arrange(desc(count)))
+```
+```{r}
+# Group public charging pop by zip, showing counts
+(public_charging_counts <- public_charging_subset %>%
+  group_by(ZIP) %>%
+  summarize(count = n()) %>% 
+  arrange(desc(count)))
+```
+```{r}
+# Join Both Tables
+# public_charging_subset$ZIP <- as.integer(public_charging_subset$ZIP)
+
+(combined_public_EVpop <- inner_join(public_charging_counts, counts_per_postal, by = c("ZIP" = "Postal Code")))
+colnames(combined_public_EVpop) <- c("ZIP","ChargingCounts", "VehicleCounts")
+```
+
+```{r}
+# Run regression on ZIP
+model <- lm(combined_public_EVpop$VehicleCounts ~ combined_public_EVpop$ChargingCounts)
+summary(model)
+```
+Note: P-value is 0.0871 . Slightly larger than 0.05. 
+
+### Run Regression on County level
+```{r}
+# Electric pop dataset grouped by County
+(electric_pop_grouped <-electric_pop %>% group_by(County)%>%
+  summarize(count = n()))
+```
+
+```{r}
+# Combine dataset to borrow County Columns
+(public_charging_grouped <- left_join(public_charging_subset, electric_pop, by = c("ZIP" = "Postal Code")))
+```
+```{r}
+A <- (public_charging_grouped %>% group_by(County)%>% 
+  summarize(count = n()))
+```
+
+```{r}
+(combined_public_EVpop_county <- inner_join(A,electric_pop_grouped,by = c("County" = "County")))
+colnames(combined_public_EVpop_county) <- c("County","ChargingCounts", "VehicleCounts")
+```
+
+```{r}
+model2 <- lm(combined_public_EVpop_county$VehicleCounts ~ combined_public_EVpop_county$ChargingCounts)
+summary(model2)
+```
+Note: Doing a County-level analysis makes sense
+
+### Regression on Charging Type
+
+```{r}
+# Find counts of each charging type per zip
+counts_per_county <- public_charging_subset  %>%
+  group_by(ZIP) %>%
+  summarize(
+    Level1_Count = sum(!is.na(`EV Level1 EVSE Num`)),
+    Level2_Count = sum(!is.na(`EV Level2 EVSE Num`)),
+    DC_Fast_Count = sum(!is.na(`EV DC Fast Count`))
+  )
+```
+
+```{r}
+# Inner join datset by zip with electric pop
+(joined_dataset <- left_join(counts_per_county,electric_pop, by = c("ZIP" = "Postal Code")))
+```
+
+```{r}
+# Group dataset by County
+
+(result <- joined_dataset %>%
+  group_by(County) %>%
+   summarize(
+    Level1_Count = sum(Level1_Count),
+    Level2_Count = sum(Level2_Count),
+    DC_Fast_Count = sum(DC_Fast_Count),
+    count = n()
+  ) %>%
+  select(County, Level1_Count, Level2_Count, DC_Fast_Count) %>%
+  drop_na())
+```
+```{r}
+joined_dataset_county <- inner_join(result, electric_pop_grouped,by = c("County" = "County"))
+```
+
+
+```{r}
+# Run Regression
+model3 <- lm(count ~ Level1_Count +Level2_Count + DC_Fast_Count, data = joined_dataset_county)
+summary(model3)
+```
+**Notes:** Here, we noticed a trend that Level 2 counts and DC_Fast_Count are also important. 
+
+# Regression Based on Private Dataset
+### Run Regression on County level
+
+```{r}
+# Initial Data Study
+# Most Common type of charger in Private Charging : Level 2
+(result <- private_charging_subset %>%
+  summarize(
+    Level1_Count = sum(!is.na(`EV Level1 EVSE Num`)),
+    Level2_Count = sum(!is.na(`EV Level2 EVSE Num`)),
+    DC_Fast_Count = sum(!is.na(`EV DC Fast Count`))))
+```
+
+```{r}
+# Most Common type of charger in Public Charging : Level 2
+(result <- public_charging_subset %>%
+  summarize(
+    Level1_Count = sum(!is.na(`EV Level1 EVSE Num`)),
+    Level2_Count = sum(!is.na(`EV Level2 EVSE Num`)),
+    DC_Fast_Count = sum(!is.na(`EV DC Fast Count`))))
+```
+
+```{r}
+# Combine dataset to borrow County Columns
+private_charging_subset <- private_charging_subset %>%
+  mutate(ZIP = as.numeric(ZIP))
+(private_charging_grouped <- left_join(private_charging_subset, electric_pop, by = c("ZIP" = "Postal Code")))
+```
+
+```{r}
+B <- (private_charging_grouped %>% group_by(County)%>% 
+  summarize(count = n()))
+```
+
+```{r}
+(combined_private_EVpop_county <- inner_join(B,electric_pop_grouped,by = c("County" = "County")))
+colnames(combined_private_EVpop_county) <- c("County","ChargingCounts", "VehicleCounts")
+```
+
+```{r}
+model4 <- lm(VehicleCounts ~ ChargingCounts, data = combined_private_EVpop_county)
+summary(model4)
+```
+### Regression based on Charging Types
+```{r}
+# Find counts of each charging type per zip
+counts_per_county <- private_charging_subset  %>%
+  group_by(ZIP) %>%
+  summarize(
+    Level1_Count = sum(!is.na(`EV Level1 EVSE Num`)),
+    Level2_Count = sum(!is.na(`EV Level2 EVSE Num`)),
+    DC_Fast_Count = sum(!is.na(`EV DC Fast Count`))
+  )
+```
+
+```{r}
+# Inner join datset by zip with electric pop
+(joined_dataset <- left_join(counts_per_county,electric_pop, by = c("ZIP" = "Postal Code")))
+```
+
+```{r}
+# Group dataset by County
+
+(result <- joined_dataset %>%
+  group_by(County) %>%
+   summarize(
+    Level1_Count = sum(Level1_Count),
+    Level2_Count = sum(Level2_Count),
+    DC_Fast_Count = sum(DC_Fast_Count),
+    count = n()
+  ) %>%
+  select(County, Level1_Count, Level2_Count, DC_Fast_Count) %>%
+  drop_na())
+```
+
+```{r}
+joined_dataset_county <- inner_join(result, electric_pop_grouped,by = c("County" = "County"))
+
+```
+
+
+```{r}
+# Run Regression
+model5 <- lm(count ~ Level1_Count +Level2_Count + DC_Fast_Count, data = joined_dataset_county)
+summary(model5)
+```
+**Note:** Level 2 is the only one significant 
+
+# Further Analysis on the Charging Stations Datasets
+```{r}
+head(public_charging_subset)
+```
+
+```{r}
+(summary_result <- public_charging_subset %>%
+  group_by(`EV Connector Types`) %>%
+  count() %>%
+  distinct() %>% 
+  arrange(desc(n)))
+```
+
+
+```{r}
+# Improve on the code before using Regex
+(summary_result <- public_charging_subset %>% 
+ separate_rows(`EV Connector Types`, sep = " ") %>%
+  filter(`EV Connector Types` %in% c("J1772", "CCS", "CHAdeMO", "NACS")) %>%
+  group_by(`EV Connector Types`) %>%
+  count() %>%
+  arrange(desc(n)))
+```
+### Summary of Most Popular Charging Types from the Public Charging Dataset
+```{r}
+(summary_result <- public_charging_subset %>%
+  separate_rows(`EV Connector Types`, sep = " ") %>%
+  mutate(`EV Connector Types` = tolower(`EV Connector Types`)) %>%
+  mutate(Type_Category = case_when(
+    `EV Connector Types` %in% c("j1772", "ccs", "chademo", "nacs","tesla","nema1450","nema515","nema520","j1772combo") ~ `EV Connector Types`,
+    TRUE ~ "Other"
+  )) %>%
+  group_by(Type_Category) %>%
+  count() %>%
+  arrange(desc(n)))
+```
+
+
+### Summary of Most Popular Charging Types from the Private Charging Dataset
+```{r}
+(summary_result <- private_charging_subset %>%
+  separate_rows(`EV Connector Types`, sep = " ") %>%
+  mutate(`EV Connector Types` = tolower(`EV Connector Types`)) %>%
+  mutate(Type_Category = case_when(
+    `EV Connector Types` %in% c("j1772", "ccs", "chademo", "nacs","tesla","nema1450","nema515","nema520","j1772combo") ~ `EV Connector Types`,
+    TRUE ~ "Other"
+  )) %>%
+  group_by(Type_Category) %>%
+  count() %>%
+  arrange(desc(n)))
+```
+
+### Summary of Facility Types from Public Charging Dataset
+```{r}
+(summary_result <- public_charging_subset %>%
+  group_by(`Facility Type`) %>%
+  count() %>%
+  distinct() %>% 
+  arrange(desc(n))) %>% 
+  drop_na()
+```
+### Summary of Facility Types from Private Charging Dataset
+```{r}
+(summary_result <- private_charging_subset %>%
+  group_by(`Facility Type`) %>%
+  count() %>%
+  distinct() %>% 
+  arrange(desc(n)))
+```
+### Summary of Availability of Workplace Charging from Public Charging Dataset
+```{r}
+(summary_result <- public_charging_subset %>%
+  group_by(`EV Workplace Charging`) %>%
+  count() %>%
+  distinct() %>% 
+  arrange(desc(n)))
+```
+### Summary of Availability of Workplace Charging from Private Charging Dataset
+```{r}
+(summary_result <- private_charging_subset %>%
+  group_by(`EV Workplace Charging`) %>%
+  count() %>%
+  distinct() %>% 
+  arrange(desc(n)))
+```
